@@ -16,7 +16,7 @@ def _get_user_from_data(data: str) -> str:
 async def get_data_for_func(user: str, request: Request) -> dict:
     if request.method == 'POST':
         if request.body_exists:
-            return {'user': user, 'content': await request.content.read()}
+            return {'user': user, 'content': request.content}
         else:
             raise RequestDataException('An empty body is not allowed for this request.')
     elif request.rel_url.query_string == '':

@@ -1,6 +1,9 @@
+import uuid
 from hashlib import sha256
 from pathlib import Path
 from os import makedirs, remove
+from aiohttp.streams import StreamReader
+from uuid import uuid4
 
 from modules.db import DataBase
 from modules.authentification import  authenticate_user
@@ -12,17 +15,22 @@ class FilesWorker:
         self.store_folder = Path('../store')
         self.folder_name_length = 2
 
-    @staticmethod
-    async def _get_hash(data: bytes) -> str:
-        return sha256(data).hexdigest()
+    async def _get_hash_save_tmp(self, data: StreamReader) -> (Path, str):
+        tmp_file = Path(self.store_folder.joinpath(f'tmp_{uuid4()}'))
+        makedirs(tmp_file.parent, exist_ok=True)
+        file_hash = sha256()
+        with tmp_file.open('ab') as w_file:
+            async for chunk in data.iter_chunked(2048):
+                file_hash.update(chunk)
+                w_file.write(chunk)
+        return tmp_file, file_hash.hexdigest()
 
     @authenticate_user()
-    async def upload(self, user: str, content: bytes):
-        file_hash = await self._get_hash(content)
+    async def upload(self, user: str, content: StreamReader):
+        tmp_file, file_hash = await self._get_hash_save_tmp(content)
         file = self.store_folder.joinpath(file_hash[:self.folder_name_length], file_hash)
-        if not file.parent.exists():
-            makedirs(file.parent)
-        file.write_bytes(content)
+        makedirs(file.parent, exist_ok=True)
+        tmp_file.replace(file)
         await self.db.add_user_file(user, file_hash)
         return True, file_hash
 
